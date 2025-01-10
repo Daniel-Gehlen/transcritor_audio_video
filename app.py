@@ -5,6 +5,11 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Rota principal para servir o frontend
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 @app.route('/upload-chunk', methods=['POST'])
 def upload_chunk():
     file = request.files['file']
