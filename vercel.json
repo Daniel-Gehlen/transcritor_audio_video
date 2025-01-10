@@ -5,8 +5,9 @@
       "src": "wsgi.py",
       "use": "@vercel/python",
       "config": {
-        "maxLambdaSize": "50mb", 
-        "payloadSizeLimit": "50mb"  
+        "maxLambdaSize": "50mb",  
+        "payloadSizeLimit": "50mb",  
+        "installCommand": "bash build.sh"  
       }
     }
   ],
