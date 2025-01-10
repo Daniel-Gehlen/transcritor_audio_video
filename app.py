@@ -9,6 +9,10 @@ from threading import Thread
 # Configuração do Flask
 app = Flask(__name__)
 
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 # Função para encontrar o FFmpeg
 def find_ffmpeg():
     ffmpeg_path = shutil.which('ffmpeg')
