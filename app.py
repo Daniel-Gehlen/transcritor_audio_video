@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file
 import io
 import subprocess
 import shutil
@@ -9,9 +9,10 @@ from threading import Thread
 # Configuração do Flask
 app = Flask(__name__)
 
+# Rota principal para servir o frontend
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html')  # Certifique-se de que 'index.html' está na pasta 'templates'
 
 # Função para encontrar o FFmpeg
 def find_ffmpeg():
@@ -29,7 +30,7 @@ def find_ffmpeg():
             return location
     raise FileNotFoundError("FFmpeg não encontrado. Por favor, instale o FFmpeg e adicione ao PATH.")
 
-# Função para extrair áudio de vídeo (em memória)
+# Função para extrair áudio de vídeo
 def extract_audio(video_bytes, ffmpeg_path):
     try:
         # Cria um arquivo temporário em memória
@@ -62,7 +63,7 @@ def extract_audio(video_bytes, ffmpeg_path):
     except Exception as e:
         raise RuntimeError(f"Erro ao extrair áudio: {e}")
 
-# Função para transcrever áudio (em memória)
+# Função para transcrever áudio
 def transcribe_audio(audio_bytes, language='pt-BR'):
     try:
         recognizer = sr.Recognizer()
@@ -119,7 +120,7 @@ def upload():
         return send_file(
             txt_file,
             as_attachment=True,
-            download_name=f"{os.path.splitext(file.filename)[0]}_transcricao.txt",
+            download_name=f"{file.filename.split('.')[0]}_transcricao.txt",
             mimetype="text/plain"
         )
 
