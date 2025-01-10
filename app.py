@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_file, render_template
 import io
 import subprocess
 import speech_recognition as sr
-from moviepy.editor import VideoFileClip
 import shutil
 import os
 
@@ -29,10 +28,10 @@ def extract_audio(video_bytes, ffmpeg_path):
             ffmpeg_path,
             "-i", "pipe:0",  # Entrada via pipe (buffer de memória)
             "-vn",           # Ignora o vídeo
-            "-acodec", "pcm_s16le",  # Codec de áudio
-            "-ar", "16000",  # Taxa de amostragem
+            "-acodec", "pcm_s16le",  # Codec de áudio PCM WAV
+            "-ar", "16000",  # Taxa de amostragem (16 kHz)
             "-ac", "1",      # Canal mono
-            "-f", "wav",     # Formato de saída
+            "-f", "wav",     # Formato de saída WAV
             "pipe:1"         # Saída via pipe (buffer de memória)
         ]
         process = subprocess.run(
@@ -44,6 +43,29 @@ def extract_audio(video_bytes, ffmpeg_path):
         return process.stdout  # Retorna o áudio extraído como bytes
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Erro ao extrair áudio: {e.stderr.decode()}")
+
+# Função para converter áudio para WAV PCM (em memória)
+def convert_audio_to_wav(audio_bytes, ffmpeg_path):
+    try:
+        # Executa o FFmpeg para converter o áudio para WAV PCM
+        comando = [
+            ffmpeg_path,
+            "-i", "pipe:0",  # Entrada via pipe (buffer de memória)
+            "-acodec", "pcm_s16le",  # Codec de áudio PCM WAV
+            "-ar", "16000",  # Taxa de amostragem (16 kHz)
+            "-ac", "1",      # Canal mono
+            "-f", "wav",     # Formato de saída WAV
+            "pipe:1"         # Saída via pipe (buffer de memória)
+        ]
+        process = subprocess.run(
+            comando,
+            input=audio_bytes,
+            capture_output=True,
+            check=True
+        )
+        return process.stdout  # Retorna o áudio convertido como bytes
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Erro ao converter áudio: {e.stderr.decode()}")
 
 # Função para transcrever áudio (em memória)
 def transcribe_audio(audio_bytes, language='pt-BR'):
@@ -76,7 +98,9 @@ def upload():
             ffmpeg_path = find_ffmpeg()
             audio_bytes = extract_audio(file_bytes, ffmpeg_path)
         else:
-            audio_bytes = file_bytes
+            # Se for um arquivo de áudio, converte para WAV PCM
+            ffmpeg_path = find_ffmpeg()
+            audio_bytes = convert_audio_to_wav(file_bytes, ffmpeg_path)
 
         # Transcreve o áudio
         transcript = transcribe_audio(audio_bytes)
