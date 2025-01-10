@@ -1,34 +1,42 @@
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+document.getElementById('uploadForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('fileInput');
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
 
-module.exports = async (req, res) => {
-    if (req.method === 'POST') {
-        const file = req.files.file;
-        const inputPath = path.join('/tmp', file.name);
-        const outputPath = path.join('/tmp', 'converted.mp3');
+    // Configura o SSE para receber o progresso
+    const eventSource = new EventSource('/upload');
+    eventSource.onmessage = function (event) {
+        const data = JSON.parse(event.data);
 
-        // Salva o arquivo temporariamente
-        fs.writeFileSync(inputPath, file.data);
+        if (data.progress) {
+            // Atualiza a barra de progresso
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = `${data.progress}%`;
+            progressBar.textContent = `${data.progress}%`;
+        }
 
-        // Converte o arquivo usando FFmpeg
-        exec(`ffmpeg -i ${inputPath} ${outputPath}`, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Erro na conversão: ${stderr}`);
-                return res.status(500).send('Erro na conversão do arquivo.');
-            }
+        if (data.file) {
+            // Finaliza o progresso e faz o download do arquivo
+            const link = document.createElement('a');
+            link.href = `data:audio/mpeg;base64,${data.file}`;
+            link.download = 'converted.mp3';
+            link.click();
+            document.getElementById('status').textContent = 'Conversão concluída!';
+            eventSource.close();
+        }
 
-            // Lê o arquivo convertido e envia como resposta
-            const convertedFile = fs.readFileSync(outputPath);
-            res.setHeader('Content-Type', 'audio/mpeg');
-            res.setHeader('Content-Disposition', 'attachment; filename="converted.mp3"');
-            res.send(convertedFile);
+        if (data.error) {
+            // Exibe mensagem de erro
+            document.getElementById('status').textContent = data.error;
+            eventSource.close();
+        }
+    };
 
-            // Remove os arquivos temporários
-            fs.unlinkSync(inputPath);
-            fs.unlinkSync(outputPath);
-        });
-    } else {
-        res.status(405).send('Método não permitido.');
-    }
-};
+    // Envia o arquivo para o backend
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    });
+});

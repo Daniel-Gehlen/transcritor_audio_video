@@ -14,8 +14,10 @@
             <input type="file" id="fileInput" accept=".mp4,.mkv,.avi,.mov,.wav,.mp3" required>
             <button type="submit">Enviar e Transcrever</button>
         </form>
+        <div class="progress-bar">
+            <div class="progress" id="progressBar">0%</div>
+        </div>
         <p id="status"></p>
-        <a id="downloadLink" style="display:none;">Baixar Transcrição</a>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
