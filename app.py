@@ -23,7 +23,7 @@ def upload_chunk():
                 chunk_path = os.path.join(UPLOAD_FOLDER, f'{file_name}.part{i}')
                 with open(chunk_path, 'rb') as chunk_file:
                     full_file.write(chunk_file.read())
-                os.remove(chunk_path)  # Remove o chunk após a combinação
+                os.remove(chunk_path)  
 
         return jsonify({"message": "Upload e combinação concluídos."})
 

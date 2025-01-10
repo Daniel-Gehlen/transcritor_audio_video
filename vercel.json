@@ -5,8 +5,7 @@
       "src": "wsgi.py",
       "use": "@vercel/python",
       "config": {
-        "maxLambdaSize": "50mb",  
-        "installCommand": "pip install -r requirements.txt && apt-get update && apt-get install -y ffmpeg"  // Instala dependências e FFmpeg
+        "maxLambdaSize": "50mb"  
       }
     }
   ],
@@ -15,6 +14,5 @@
       "src": "/(.*)",
       "dest": "wsgi.py"
     }
-  ],
-  "maxRequestBodySize": "50mb"  
+  ]
 }
