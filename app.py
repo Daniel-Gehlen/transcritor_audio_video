@@ -1,4 +1,7 @@
-from flask import Flask, request, jsonify, Response, send_file
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
+from flask import Flask, request, jsonify, Response, send_file, render_template
 import os
 import tempfile
 from threading import Thread
@@ -17,7 +20,7 @@ UPLOAD_FOLDER = tempfile.mkdtemp()
 # Rota principal para servir o frontend
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html')  # Certifique-se de que o arquivo index.html existe na pasta templates
 
 # Rota para receber partes do arquivo (chunks)
 @app.route('/upload-chunk', methods=['POST'])
