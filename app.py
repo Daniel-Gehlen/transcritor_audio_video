@@ -8,6 +8,9 @@ import speech_recognition as sr
 # Configuração do Flask
 app = Flask(__name__)
 
+# Aumenta o limite de tamanho de payload para 50 MB
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+
 # Pasta temporária para armazenar as partes do arquivo
 UPLOAD_FOLDER = tempfile.mkdtemp()
 
@@ -19,6 +22,9 @@ def index():
 # Rota para receber partes do arquivo
 @app.route('/upload-chunk', methods=['POST'])
 def upload_chunk():
+    if 'file' not in request.files:
+        return jsonify({"error": "Nenhum arquivo enviado."}), 400
+
     file = request.files['file']
     chunk_index = int(request.form['chunkIndex'])
     total_chunks = int(request.form['totalChunks'])
