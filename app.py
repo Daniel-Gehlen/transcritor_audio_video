@@ -19,15 +19,6 @@ def find_ffmpeg():
     ffmpeg_path = shutil.which('ffmpeg')
     if ffmpeg_path:
         return ffmpeg_path
-    common_locations = [
-        r'C:\Program Files\FFmpeg\bin\ffmpeg.exe',
-        r'C:\Program Files\FFmpeg\ffmpeg.exe',
-        r'C:\FFmpeg\bin\ffmpeg.exe',
-        r'C:\Tools\FFmpeg\bin\ffmpeg.exe'
-    ]
-    for location in common_locations:
-        if os.path.exists(location):
-            return location
     raise FileNotFoundError("FFmpeg não encontrado. Por favor, instale o FFmpeg e adicione ao PATH.")
 
 # Função para extrair áudio de vídeo (em memória)

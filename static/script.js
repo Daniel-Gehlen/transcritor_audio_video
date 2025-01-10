@@ -26,7 +26,8 @@ document.getElementById('uploadForm').addEventListener('submit', async function 
             });
 
             if (!response.ok) {
-                throw new Error('Erro ao enviar chunk.');
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Erro ao enviar chunk.");
             }
 
             const data = await response.arrayBuffer();
@@ -36,6 +37,7 @@ document.getElementById('uploadForm').addEventListener('submit', async function 
             console.log(`Chunk ${i + 1}/${totalChunks} enviado e processado.`);
         } catch (error) {
             console.error('Erro ao enviar chunk:', error);
+            document.getElementById('status').textContent = error.message;
             return;
         }
     }
