@@ -2,6 +2,12 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
     e.preventDefault();
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
+
+    if (!file) {
+        alert('Por favor, selecione um arquivo.');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -20,10 +26,10 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
         if (data.file) {
             // Finaliza o progresso e faz o download do arquivo
             const link = document.createElement('a');
-            link.href = `data:audio/mpeg;base64,${data.file}`;
-            link.download = 'converted.mp3';
+            link.href = data.file; // URL do arquivo gerado pelo backend
+            link.download = 'transcricao.txt'; // Nome do arquivo para download
             link.click();
-            document.getElementById('status').textContent = 'Conversão concluída!';
+            document.getElementById('status').textContent = 'Transcrição concluída!';
             eventSource.close();
         }
 
@@ -38,5 +44,15 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
     fetch('/upload', {
         method: 'POST',
         body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Erro ao enviar arquivo.');
+        }
+    })
+    .catch(error => {
+        console.error('Erro ao enviar arquivo:', error);
+        document.getElementById('status').textContent = 'Erro ao enviar arquivo.';
+        eventSource.close();
     });
 });

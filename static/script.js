@@ -58,10 +58,34 @@ document.getElementById('uploadForm').addEventListener('submit', async function 
         const data = await response.json();
         console.log('Processamento iniciado:', data);
 
-        // Aguarda o processamento e faz o download da transcrição
-        setTimeout(() => {
-            window.location.href = `/download/${file.name}`;
-        }, 5000); // Aguarda 5 segundos (ajuste conforme necessário)
+        // Configura o SSE para receber o progresso
+        const eventSource = new EventSource('/progress');
+        eventSource.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+
+            if (data.progress) {
+                // Atualiza a barra de progresso
+                const progressBar = document.getElementById('progressBar');
+                progressBar.style.width = `${data.progress}%`;
+                progressBar.textContent = `${data.progress}%`;
+            }
+
+            if (data.file) {
+                // Finaliza o progresso e faz o download do arquivo
+                const link = document.createElement('a');
+                link.href = data.file; // URL do arquivo gerado pelo backend
+                link.download = 'transcricao.txt'; // Nome do arquivo para download
+                link.click();
+                document.getElementById('status').textContent = 'Transcrição concluída!';
+                eventSource.close();
+            }
+
+            if (data.error) {
+                // Exibe mensagem de erro
+                document.getElementById('status').textContent = data.error;
+                eventSource.close();
+            }
+        };
     } catch (error) {
         console.error('Erro ao iniciar processamento:', error);
         document.getElementById('status').textContent = 'Erro ao processar arquivo.';
