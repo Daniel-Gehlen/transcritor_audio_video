@@ -14,6 +14,11 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 # Pasta temporária para armazenar arquivos
 UPLOAD_FOLDER = tempfile.mkdtemp()
 
+# Rota principal para servir o frontend
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 # Rota para receber partes do arquivo (chunks)
 @app.route('/upload-chunk', methods=['POST'])
 def upload_chunk():
