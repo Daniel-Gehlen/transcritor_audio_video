@@ -15,21 +15,14 @@ body {
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     text-align: center;
-    width: 100%;
-    max-width: 400px;
 }
 
 h1 {
     margin-bottom: 20px;
-    font-size: 24px;
 }
 
 input[type="file"] {
     margin-bottom: 20px;
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
 }
 
 button {
@@ -39,33 +32,13 @@ button {
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    width: 100%;
 }
 
 button:hover {
     background-color: #0056b3;
 }
 
-.progress-bar {
-    width: 100%;
-    background-color: #f3f3f3;
-    border-radius: 5px;
-    overflow: hidden;
-    margin-top: 20px;
-}
-
-.progress {
-    width: 0%;
-    height: 30px;
-    background-color: #4caf50;
-    text-align: center;
-    line-height: 30px;
-    color: white;
-    transition: width 0.3s ease;
-}
-
 #status {
     margin-top: 20px;
-    font-size: 14px;
     color: #333;
 }

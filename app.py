@@ -4,6 +4,7 @@ import subprocess
 import speech_recognition as sr
 from moviepy.editor import VideoFileClip
 import shutil
+import os
 
 # Configuração do Flask
 app = Flask(__name__)
@@ -102,7 +103,17 @@ def upload():
         )
 
     except Exception as e:
-        return jsonify({"error": f"Erro ao processar o arquivo: {e}"}), 500
+        return jsonify({"error": f"Erro ao processar o arquivo: {str(e)}"}), 500
+
+# Rota para lidar com métodos não permitidos
+@app.route('/upload', methods=['GET', 'PUT', 'DELETE', 'PATCH'])
+def upload_method_not_allowed():
+    return jsonify({"error": "Método não permitido. Use POST."}), 405
+
+# Rota para servir o favicon.ico
+@app.route('/favicon.ico')
+def favicon():
+    return send_file('static/favicon.ico')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
