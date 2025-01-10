@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify, send_file, render_template
-import os
 import io
 import subprocess
 import speech_recognition as sr
@@ -8,10 +7,6 @@ import shutil
 
 # Configuração do Flask
 app = Flask(__name__)
-
-# Pasta temporária para armazenar chunks (usando /tmp)
-UPLOAD_FOLDER = '/tmp'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Rota principal para servir o frontend
 @app.route('/')
@@ -72,62 +67,42 @@ def transcribe_audio(audio_bytes, language='pt-BR'):
     except sr.RequestError as e:
         raise RuntimeError(f"Erro na solicitação de transcrição: {e}")
 
-# Rota para receber chunks
-@app.route('/upload-chunk', methods=['POST'])
-def upload_chunk():
+# Rota para upload e processamento
+@app.route('/upload', methods=['POST'])
+def upload():
     if 'file' not in request.files:
         return jsonify({"error": "Nenhum arquivo enviado."}), 400
-
     file = request.files['file']
-    chunk_index = int(request.form['chunkIndex'])
-    total_chunks = int(request.form['totalChunks'])
-    file_name = request.form['fileName']
+    if file.filename == '':
+        return jsonify({"error": "Nome do arquivo inválido."}), 400
 
-    # Salva o chunk em um arquivo temporário
-    chunk_path = os.path.join(UPLOAD_FOLDER, f"{file_name}.part{chunk_index}")
-    file.save(chunk_path)
+    try:
+        file_bytes = file.read()
 
-    if chunk_index == total_chunks - 1:
-        # Combina os chunks em um único arquivo
-        full_file_path = os.path.join(UPLOAD_FOLDER, file_name)
-        with open(full_file_path, 'wb') as full_file:
-            for i in range(total_chunks):
-                chunk_path = os.path.join(UPLOAD_FOLDER, f"{file_name}.part{i}")
-                with open(chunk_path, 'rb') as chunk_file:
-                    full_file.write(chunk_file.read())
-                os.remove(chunk_path)  # Remove o chunk após a combinação
+        # Verifica se é um vídeo e extrai o áudio
+        if file.filename.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+            ffmpeg_path = find_ffmpeg()
+            audio_bytes = extract_audio(file_bytes, ffmpeg_path)
+        else:
+            audio_bytes = file_bytes
 
-        # Processa o arquivo completo
-        try:
-            with open(full_file_path, 'rb') as f:
-                file_bytes = f.read()
+        # Transcreve o áudio
+        transcript = transcribe_audio(audio_bytes)
 
-            # Verifica se é um vídeo e extrai o áudio
-            if file_name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
-                ffmpeg_path = find_ffmpeg()
-                audio_bytes = extract_audio(file_bytes, ffmpeg_path)
-            else:
-                audio_bytes = file_bytes
+        # Cria um arquivo TXT em memória
+        txt_file = io.BytesIO(transcript.encode('utf-8'))
+        txt_file.seek(0)
 
-            # Transcreve o áudio
-            transcript = transcribe_audio(audio_bytes)
+        # Retorna o arquivo TXT para download
+        return send_file(
+            txt_file,
+            as_attachment=True,
+            download_name=f"{file.filename.split('.')[0]}_transcricao.txt",
+            mimetype="text/plain"
+        )
 
-            # Cria um arquivo TXT em memória
-            txt_file = io.BytesIO(transcript.encode('utf-8'))
-            txt_file.seek(0)
-
-            # Retorna o arquivo TXT para download
-            return send_file(
-                txt_file,
-                as_attachment=True,
-                download_name=f"{file_name.split('.')[0]}_transcricao.txt",
-                mimetype="text/plain"
-            )
-
-        except Exception as e:
-            return jsonify({"error": f"Erro ao processar o arquivo: {e}"}), 500
-
-    return jsonify({"message": "Chunk recebido com sucesso."})
+    except Exception as e:
+        return jsonify({"error": f"Erro ao processar o arquivo: {e}"}), 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
