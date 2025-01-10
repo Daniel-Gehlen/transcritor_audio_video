@@ -4,8 +4,7 @@ import tempfile
 import subprocess
 import shutil
 import speech_recognition as sr
-from pydub import AudioSegment
-import traceback
+from moviepy.editor import VideoFileClip
 from threading import Thread
 
 # Configuração do Flask
@@ -33,7 +32,7 @@ def find_ffmpeg():
     for location in common_locations:
         if os.path.exists(location):
             return location
-    raise FileNotFoundError("FFmpeg not found. Please install and add to PATH.")
+    raise FileNotFoundError("FFmpeg não encontrado. Por favor, instale o FFmpeg e adicione ao PATH.")
 
 # Função para extrair áudio de vídeo
 def extract_audio(video_path, ffmpeg_path):
@@ -63,6 +62,7 @@ def transcribe_audio(audio_path, language='pt-BR'):
         chunk_length = 30 * 1000  # 30 segundos
         chunks = [audio[i:i+chunk_length] for i in range(0, len(audio), chunk_length)]
         full_transcript = []
+
         for i, chunk in enumerate(chunks):
             chunk_path = f"temp_chunk_{i}.wav"
             chunk.export(chunk_path, format="wav")
@@ -76,22 +76,36 @@ def transcribe_audio(audio_path, language='pt-BR'):
             except sr.RequestError as e:
                 print(f"Erro na solicitação de transcrição: {e}")
             os.remove(chunk_path)
+
         return " ".join(full_transcript)
     except Exception as e:
         raise RuntimeError(f"Erro ao transcrever áudio: {e}")
 
-# Função assíncrona para processar vídeo
-def process_video_async(file_path, file_name):
+# Função assíncrona para processar o arquivo
+def process_file_async(file_path, file_name):
     try:
         ffmpeg_path = find_ffmpeg()
-        audio_path = extract_audio(file_path, ffmpeg_path)
+        
+        # Se for um vídeo, extrai o áudio
+        if file_name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+            audio_path = extract_audio(file_path, ffmpeg_path)
+        else:
+            audio_path = file_path
+
+        # Transcreve o áudio
         transcript = transcribe_audio(audio_path)
-        txt_path = os.path.join(UPLOAD_FOLDER, f"{file_name}_transcricao.txt")
+
+        # Salva a transcrição em um arquivo de texto
+        txt_path = os.path.join(UPLOAD_FOLDER, f"{os.path.splitext(file_name)[0]}_transcricao.txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(transcript)
-        os.remove(audio_path)
+
+        # Remove o arquivo de áudio temporário (se criado)
+        if file_name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+            os.remove(audio_path)
+
     except Exception as e:
-        print(f"Erro ao processar vídeo: {e}")
+        print(f"Erro ao processar o arquivo: {e}")
 
 # Rota para upload de arquivos
 @app.route('/upload', methods=['POST'])
@@ -103,12 +117,12 @@ def upload():
         return jsonify({"error": "Nome do arquivo inválido."}), 400
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(file_path)
-    thread = Thread(target=process_video_async, args=(file_path, os.path.splitext(file.filename)[0]))
+    thread = Thread(target=process_file_async, args=(file_path, file.filename))
     thread.start()
     return jsonify({"message": "Arquivo recebido e processamento iniciado."})
 
 # Rota para download da transcrição
-@app.route('/download/<filename>', methods=['GET'])
+@app.route('/download/<filename>')
 def download(filename):
     txt_path = os.path.join(UPLOAD_FOLDER, f"{filename}_transcricao.txt")
     if not os.path.exists(txt_path):

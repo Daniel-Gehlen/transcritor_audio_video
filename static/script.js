@@ -5,7 +5,7 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/upload', {
+    fetch('/convert', {
         method: 'POST',
         body: formData
     })
@@ -14,10 +14,8 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
         if (data.message) {
             document.getElementById('status').textContent = data.message;
             const downloadLink = document.getElementById('downloadLink');
-            downloadLink.href = `/download/${file.name.split('.')[0]}`;
+            downloadLink.href = `/download/${file.name.split('.')[0]}.gif`;
             downloadLink.style.display = 'block';
-        } else if (data.error) {
-            document.getElementById('status').textContent = data.error;
         }
     })
     .catch(error => {

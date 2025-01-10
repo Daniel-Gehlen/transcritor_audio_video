@@ -1,4 +1,4 @@
-# Conversor de MP4 para GIF
+# Conversor de transcritor de áudio ou vídeo
 
 Este projeto é um conversor de arquivos de áudio MP4 para GIF, desenvolvido com Flask (Python) e implantado na Vercel. Ele permite que os usuários façam upload de arquivos MP4, convertam-nos para GIF e façam o download do arquivo convertido.
 
@@ -18,13 +18,13 @@ Este projeto é um conversor de arquivos de áudio MP4 para GIF, desenvolvido co
 ## Estrutura do Projeto
 
 ```
-conversor_mp4_gif/
+transcritor_audio_video/
 │
 ├── api/                  # Pasta para funções serverless (opcional)
-│   └── convert.js        # Exemplo de função serverless
+│   └── transcribe.js     # Exemplo de função serverless
 ├── app.py                # Código principal do Flask
 ├── build.sh              # Script de build (opcional)
-├── readme.md             # Este arquivo
+├── readme.md             # Documentação do projeto
 ├── requirements.txt      # Dependências do projeto
 ├── static/               # Pasta para arquivos estáticos
 │   ├── favicon.ico       # Ícone do site
@@ -38,60 +38,24 @@ conversor_mp4_gif/
 
 ---
 
-## Funcionalidades
+## Código do Projeto
 
-1. **Upload de Arquivos MP4**: Os usuários podem fazer upload de arquivos MP4.
-2. **Conversão para GIF**: O arquivo MP4 é convertido para GIF usando MoviePy.
-3. **Download do Arquivo Convertido**: O usuário pode fazer o download do arquivo GIF convertido.
-
----
-
-## Passo a Passo para Criar o Projeto
-
-### 1. **Configuração do Ambiente**
-
-#### Criar o Diretório do Projeto
-```bash
-mkdir conversor_mp4_gif
-cd conversor_mp4_gif
-```
-
-#### Criar um Ambiente Virtual (venv)
-```bash
-python -m venv venv
-source venv/bin/activate  # No Windows: venv\Scripts\activate
-```
-
-#### Instalar Dependências
-Crie um arquivo `requirements.txt` com as seguintes dependências:
-
-```txt
-Flask==2.3.2
-moviepy==1.0.3
-gunicorn==20.1.0
-```
-
-Instale as dependências:
-```bash
-pip install -r requirements.txt
-```
-
----
-
-### 2. **Código do Projeto**
-
-#### `app.py`
+### `app.py`
 ```python
 from flask import Flask, render_template, request, jsonify, send_file
 import os
 import tempfile
-from moviepy.editor import VideoFileClip
+import subprocess
+import shutil
+import speech_recognition as sr
+from pydub import AudioSegment
+import traceback
 from threading import Thread
 
 # Configuração do Flask
 app = Flask(__name__)
 
-# Pasta temporária para armazenar as partes do arquivo
+# Pasta temporária para armazenar arquivos
 UPLOAD_FOLDER = tempfile.mkdtemp()
 
 # Rota principal para servir o frontend
@@ -99,141 +63,136 @@ UPLOAD_FOLDER = tempfile.mkdtemp()
 def index():
     return render_template('index.html')
 
-# Rota para receber partes do arquivo
-@app.route('/upload-chunk', methods=['POST'])
-def upload_chunk():
-    file = request.files['file']
-    chunk_index = int(request.form['chunkIndex'])
-    total_chunks = int(request.form['totalChunks'])
-    file_name = request.form['fileName']
+# Função para encontrar o FFmpeg
+def find_ffmpeg():
+    ffmpeg_path = shutil.which('ffmpeg')
+    if ffmpeg_path:
+        return ffmpeg_path
+    common_locations = [
+        r'C:\Program Files\FFmpeg\bin\ffmpeg.exe',
+        r'C:\Program Files\FFmpeg\ffmpeg.exe',
+        r'C:\FFmpeg\bin\ffmpeg.exe',
+        r'C:\Tools\FFmpeg\bin\ffmpeg.exe'
+    ]
+    for location in common_locations:
+        if os.path.exists(location):
+            return location
+    raise FileNotFoundError("FFmpeg not found. Please install and add to PATH.")
 
-    # Salva a parte do arquivo em um arquivo temporário
-    chunk_path = os.path.join(UPLOAD_FOLDER, f'{file_name}.part{chunk_index}')
-    file.save(chunk_path)
-
-    return jsonify({"message": "Parte recebida com sucesso."})
-
-# Função assíncrona para converter o arquivo
-def convert_async(file_name, total_chunks):
+# Função para extrair áudio de vídeo
+def extract_audio(video_path, ffmpeg_path):
     try:
-        # Reúne as partes do arquivo
-        full_file_path = os.path.join(UPLOAD_FOLDER, f'{file_name}.full')
-        with open(full_file_path, 'wb') as full_file:
-            for i in range(total_chunks):
-                chunk_path = os.path.join(UPLOAD_FOLDER, f'{file_name}.part{i}')
-                with open(chunk_path, 'rb') as chunk_file:
-                    full_file.write(chunk_file.read())
-
-        # Converte o arquivo MP4 para GIF
-        gif_path = os.path.join(UPLOAD_FOLDER, f'{os.path.splitext(file_name)[0]}.gif')
-        clip = VideoFileClip(full_file_path)
-        
-        # Calculate new dimensions while maintaining aspect ratio
-        target_width = 480
-        aspect_ratio = clip.w / clip.h
-        new_height = int(target_width / aspect_ratio)
-        
-        # Resize clip
-        resized_clip = clip.resize(width=target_width, height=new_height)
-        
-        # Write to GIF with optimized settings
-        resized_clip.write_gif(
-            gif_path,
-            fps=15,              # Reduced FPS for smaller file size
-            program='ffmpeg',    # Using ffmpeg for better performance
-            opt='OptimizePlus', # High quality optimization
-            fuzz=2              # Slight color fuzz for better compression
-        )
-        
-        # Close clips to free memory
-        resized_clip.close()
-        clip.close()
-
-        # Limpa os arquivos temporários
-        os.remove(full_file_path)
-        for i in range(total_chunks):
-            os.remove(os.path.join(UPLOAD_FOLDER, f'{file_name}.part{i}'))
-
+        audio_path = os.path.splitext(video_path)[0] + ".wav"
+        comando = [
+            ffmpeg_path,
+            "-i", video_path,
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            audio_path
+        ]
+        result = subprocess.run(comando, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Falha na extração de áudio: {result.stderr}")
+        return audio_path
     except Exception as e:
-        print(f"Erro ao converter o arquivo: {e}")
+        raise RuntimeError(f"Erro ao extrair áudio: {e}")
 
-# Rota para iniciar a conversão
-@app.route('/convert', methods=['POST'])
-def convert():
-    data = request.get_json()
-    file_name = data['fileName']
-    total_chunks = data['totalChunks']
+# Função para transcrever áudio
+def transcribe_audio(audio_path, language='pt-BR'):
+    try:
+        recognizer = sr.Recognizer()
+        audio = AudioSegment.from_wav(audio_path)
+        chunk_length = 30 * 1000  # 30 segundos
+        chunks = [audio[i:i+chunk_length] for i in range(0, len(audio), chunk_length)]
+        full_transcript = []
+        for i, chunk in enumerate(chunks):
+            chunk_path = f"temp_chunk_{i}.wav"
+            chunk.export(chunk_path, format="wav")
+            try:
+                with sr.AudioFile(chunk_path) as source:
+                    audio_chunk = recognizer.record(source)
+                    transcript = recognizer.recognize_google(audio_chunk, language=language)
+                    full_transcript.append(transcript)
+            except sr.UnknownValueError:
+                print(f"Não foi possível transcrever o chunk {i+1}")
+            except sr.RequestError as e:
+                print(f"Erro na solicitação de transcrição: {e}")
+            os.remove(chunk_path)
+        return " ".join(full_transcript)
+    except Exception as e:
+        raise RuntimeError(f"Erro ao transcrever áudio: {e}")
 
-    # Inicia a conversão em uma thread separada
-    thread = Thread(target=convert_async, args=(file_name, total_chunks))
+# Função assíncrona para processar vídeo
+def process_video_async(file_path, file_name):
+    try:
+        ffmpeg_path = find_ffmpeg()
+        audio_path = extract_audio(file_path, ffmpeg_path)
+        transcript = transcribe_audio(audio_path)
+        txt_path = os.path.join(UPLOAD_FOLDER, f"{file_name}_transcricao.txt")
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(transcript)
+        os.remove(audio_path)
+    except Exception as e:
+        print(f"Erro ao processar vídeo: {e}")
+
+# Rota para upload de arquivos
+@app.route('/upload', methods=['POST'])
+def upload():
+    if 'file' not in request.files:
+        return jsonify({"error": "Nenhum arquivo enviado."}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Nome do arquivo inválido."}), 400
+    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(file_path)
+    thread = Thread(target=process_video_async, args=(file_path, os.path.splitext(file.filename)[0]))
     thread.start()
+    return jsonify({"message": "Arquivo recebido e processamento iniciado."})
 
-    return jsonify({"message": "Conversão iniciada."})
-
-# Rota para download do arquivo convertido
-@app.route('/download/<filename>')
+# Rota para download da transcrição
+@app.route('/download/<filename>', methods=['GET'])
 def download(filename):
-    gif_path = os.path.join(UPLOAD_FOLDER, filename)
-    return send_file(gif_path, as_attachment=True)
+    txt_path = os.path.join(UPLOAD_FOLDER, f"{filename}_transcricao.txt")
+    if not os.path.exists(txt_path):
+        return jsonify({"error": "Arquivo não encontrado."}), 404
+    return send_file(txt_path, as_attachment=True)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
 ```
 
-#### `wsgi.py`
-```python
-from app import app
+---
 
-if __name__ == "__main__":
-    app.run()
-```
-
-#### `vercel.json`
-```json
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "wsgi.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "wsgi.py"
-    }
-  ]
-}
-```
-
-#### `templates/index.html`
+### `templates/index.html`
 ```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversor de MP4 para GIF</title>
+    <title>Transcritor de Áudio/Video</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
 <body>
     <div class="container">
-        <h1>Conversor de MP4 para GIF</h1>
+        <h1>Transcritor de Áudio/Video</h1>
         <form id="uploadForm">
-            <input type="file" id="fileInput" accept="video/mp4" required>
-            <button type="submit" id="convertButton">Converter</button>
+            <input type="file" id="fileInput" accept=".mp4,.mkv,.avi,.mov,.wav,.mp3" required>
+            <button type="submit">Enviar e Transcrever</button>
         </form>
         <p id="status"></p>
+        <a id="downloadLink" style="display:none;">Baixar Transcrição</a>
     </div>
-
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
 ```
 
-#### `static/script.js`
+---
+
+### `static/script.js`
 ```javascript
 document.getElementById('uploadForm').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -242,20 +201,20 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/api/convert', {
+    fetch('/upload', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.blob())
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'converted.gif';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            document.getElementById('status').textContent = data.message;
+            const downloadLink = document.getElementById('downloadLink');
+            downloadLink.href = `/download/${file.name.split('.')[0]}`;
+            downloadLink.style.display = 'block';
+        } else if (data.error) {
+            document.getElementById('status').textContent = data.error;
+        }
     })
     .catch(error => {
         console.error('Erro:', error);
@@ -263,7 +222,9 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
 });
 ```
 
-#### `static/styles.css`
+---
+
+### `static/styles.css`
 ```css
 body {
     font-family: Arial, sans-serif;
@@ -304,9 +265,95 @@ button {
 button:hover {
     background-color: #0056b3;
 }
+
+#downloadLink {
+    margin-top: 20px;
+    color: #007bff;
+    text-decoration: none;
+}
 ```
 
 ---
+
+### `requirements.txt`
+```txt
+Flask==2.3.2
+ffmpeg-python==0.2.0
+gunicorn==20.1.0
+pydub==0.25.1
+SpeechRecognition==3.10.0
+```
+
+---
+
+### `vercel.json`
+```json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "wsgi.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "wsgi.py"
+    }
+  ]
+}
+```
+
+---
+
+### `wsgi.py`
+```python
+from app import app
+
+if __name__ == "__main__":
+    app.run()
+```
+
+---
+
+## Como Executar
+
+1. **Instale as dependências:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Execute o Flask:**
+   ```bash
+   python app.py
+   ```
+
+3. **Acesse no navegador:**
+   Abra `http://localhost:5000` e faça upload de um arquivo de áudio ou vídeo.
+
+4. **Implante na Vercel:**
+   Use o comando `vercel --prod` para implantar o projeto.
+
+---
+
+## Funcionalidades
+
+1. **Upload de Arquivos**: Aceita arquivos de áudio (WAV, MP3) e vídeo (MP4, MKV, AVI, etc.).
+2. **Extração de Áudio**: Extrai áudio de vídeos usando FFmpeg.
+3. **Transcrição**: Transcreve o áudio usando a API do Google Speech Recognition.
+4. **Download da Transcrição**: Gera um arquivo `.txt` com a transcrição e disponibiliza para download.
+
+---
+
+## Observações
+
+- Certifique-se de que o FFmpeg está instalado e acessível no sistema.
+- O projeto pode ser adaptado para usar outras APIs de reconhecimento de fala, como Whisper da OpenAI.
+- Para melhorar a precisão da transcrição, ajuste a taxa de amostragem e o idioma no código.
+
+
+```
 
 ### 3. **Implantação na Vercel**
 
