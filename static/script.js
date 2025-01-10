@@ -2,35 +2,38 @@ document.getElementById('uploadForm').addEventListener('submit', async function 
     e.preventDefault();
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
+    const chunkSize = 5 * 1024 * 1024; // 5 MB por chunk
+    const totalChunks = Math.ceil(file.size / chunkSize);
 
-    try {
-        const response = await fetch('/upload', {
-            method: 'POST',
-            body: formData
-        });
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
 
-        if (!response.ok) {
-            throw new Error('Erro ao enviar o arquivo.');
+        const formData = new FormData();
+        formData.append('file', chunk);
+        formData.append('chunkIndex', i);
+        formData.append('totalChunks', totalChunks);
+        formData.append('fileName', file.name);
+
+        try {
+            const response = await fetch('/upload-chunk', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao enviar chunk.');
+            }
+
+            const data = await response.json();
+            console.log(`Chunk ${i + 1}/${totalChunks} enviado:`, data);
+        } catch (error) {
+            console.error('Erro ao enviar chunk:', error);
+            return;
         }
-
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
-        // Exibe o status de sucesso
-        document.getElementById('status').textContent = 'Arquivo processado com sucesso!';
-
-        // Faz o download do arquivo convertido
-        const link = document.createElement('a');
-        link.href = `data:text/plain;base64,${data.file}`;
-        link.download = 'transcricao.txt';
-        link.click();
-    } catch (error) {
-        console.error('Erro:', error);
-        document.getElementById('status').textContent = error.message;
     }
+
+    console.log('Todos os chunks foram enviados.');
+    document.getElementById('status').textContent = 'Upload concluído!';
 });
