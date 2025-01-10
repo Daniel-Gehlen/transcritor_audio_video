@@ -12,7 +12,7 @@ app = Flask(__name__)
 # Rota principal para servir o frontend
 @app.route('/')
 def index():
-    return render_template('index.html')  # Certifique-se de que 'index.html' está na pasta 'templates'
+    return render_template('index.html')
 
 # Função para encontrar o FFmpeg
 def find_ffmpeg():
