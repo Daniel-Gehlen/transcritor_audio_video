@@ -1,386 +1,116 @@
-# Conversor de transcritor de áudio ou vídeo
+# Transcrição de Áudio/Vídeo para Texto
 
-Este projeto é um conversor de arquivos de áudio MP4 para GIF, desenvolvido com Flask (Python) e implantado na Vercel. Ele permite que os usuários façam upload de arquivos MP4, convertam-nos para GIF e façam o download do arquivo convertido.
+## 📝 Descrição
 
+Este projeto é uma aplicação web que permite transcrever arquivos de áudio e vídeo para texto, utilizando tecnologias modernas de processamento de mídia e reconhecimento de fala.
 
----
+## 🛠 Tecnologias Utilizadas
 
-## Tecnologias Utilizadas
+- **Backend**:
+  - Python 3.x
+  - Flask (framework web)
+  - SpeechRecognition (para reconhecimento de voz)
+  - MoviePy (para extração de áudio de vídeos)
+  - Werkzeug (para manipulação de arquivos e uploads)
 
-- **Flask**: Framework web em Python para criar a aplicação.
-- **MoviePy**: Biblioteca para manipulação de vídeos e conversão para GIF.
-- **Vercel**: Plataforma de implantação serverless.
-- **HTML/CSS/JavaScript**: Frontend para interface do usuário.
-- **Gunicorn**: Servidor WSGI para produção.
+- **Frontend**:
+  - HTML5, CSS3, JavaScript
+  - Fetch API para comunicação assíncrona
+  - EventSource para atualizações de progresso (SSE)
 
----
+- **Infraestrutura**:
+  - Sistema de upload em chunks (partes) para arquivos grandes
+  - Processamento assíncrono em threads separadas
+  - Armazenamento temporário em disco
 
-## Estrutura do Projeto
+## ⚠️ Limitações
 
+- **Não suporta arquivos WAV** para transcrição direta (o sistema funciona melhor com vídeos ou outros formatos de áudio)
+- Limite de tamanho de arquivo: 50MB
+- Requer conexão com a internet para o serviço de reconhecimento de voz do Google
+
+## three
 ```
-transcritor_audio_video/
-│
-├── api/                  # Pasta para funções serverless (opcional)
-│   └── transcribe.js     # Exemplo de função serverless
-├── app.py                # Código principal do Flask
-├── build.sh              # Script de build (opcional)
-├── readme.md             # Documentação do projeto
-├── requirements.txt      # Dependências do projeto
-├── static/               # Pasta para arquivos estáticos
-│   ├── favicon.ico       # Ícone do site
-│   ├── script.js         # Lógica do frontend
-│   └── styles.css        # Estilos CSS
-├── templates/            # Pasta para templates HTML
-│   └── index.html        # Página principal
-├── vercel.json           # Configuração do deploy na Vercel
-└── wsgi.py               # Arquivo WSGI para produção
-```
-
----
-
-## Código do Projeto
-
-### `app.py`
-```python
-from flask import Flask, render_template, request, jsonify, send_file
-import os
-import tempfile
-import subprocess
-import shutil
-import speech_recognition as sr
-from pydub import AudioSegment
-import traceback
-from threading import Thread
-
-# Configuração do Flask
-app = Flask(__name__)
-
-# Pasta temporária para armazenar arquivos
-UPLOAD_FOLDER = tempfile.mkdtemp()
-
-# Rota principal para servir o frontend
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# Função para encontrar o FFmpeg
-def find_ffmpeg():
-    ffmpeg_path = shutil.which('ffmpeg')
-    if ffmpeg_path:
-        return ffmpeg_path
-    common_locations = [
-        r'C:\Program Files\FFmpeg\bin\ffmpeg.exe',
-        r'C:\Program Files\FFmpeg\ffmpeg.exe',
-        r'C:\FFmpeg\bin\ffmpeg.exe',
-        r'C:\Tools\FFmpeg\bin\ffmpeg.exe'
-    ]
-    for location in common_locations:
-        if os.path.exists(location):
-            return location
-    raise FileNotFoundError("FFmpeg not found. Please install and add to PATH.")
-
-# Função para extrair áudio de vídeo
-def extract_audio(video_path, ffmpeg_path):
-    try:
-        audio_path = os.path.splitext(video_path)[0] + ".wav"
-        comando = [
-            ffmpeg_path,
-            "-i", video_path,
-            "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", "16000",
-            "-ac", "1",
-            audio_path
-        ]
-        result = subprocess.run(comando, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(f"Falha na extração de áudio: {result.stderr}")
-        return audio_path
-    except Exception as e:
-        raise RuntimeError(f"Erro ao extrair áudio: {e}")
-
-# Função para transcrever áudio
-def transcribe_audio(audio_path, language='pt-BR'):
-    try:
-        recognizer = sr.Recognizer()
-        audio = AudioSegment.from_wav(audio_path)
-        chunk_length = 30 * 1000  # 30 segundos
-        chunks = [audio[i:i+chunk_length] for i in range(0, len(audio), chunk_length)]
-        full_transcript = []
-        for i, chunk in enumerate(chunks):
-            chunk_path = f"temp_chunk_{i}.wav"
-            chunk.export(chunk_path, format="wav")
-            try:
-                with sr.AudioFile(chunk_path) as source:
-                    audio_chunk = recognizer.record(source)
-                    transcript = recognizer.recognize_google(audio_chunk, language=language)
-                    full_transcript.append(transcript)
-            except sr.UnknownValueError:
-                print(f"Não foi possível transcrever o chunk {i+1}")
-            except sr.RequestError as e:
-                print(f"Erro na solicitação de transcrição: {e}")
-            os.remove(chunk_path)
-        return " ".join(full_transcript)
-    except Exception as e:
-        raise RuntimeError(f"Erro ao transcrever áudio: {e}")
-
-# Função assíncrona para processar vídeo
-def process_video_async(file_path, file_name):
-    try:
-        ffmpeg_path = find_ffmpeg()
-        audio_path = extract_audio(file_path, ffmpeg_path)
-        transcript = transcribe_audio(audio_path)
-        txt_path = os.path.join(UPLOAD_FOLDER, f"{file_name}_transcricao.txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(transcript)
-        os.remove(audio_path)
-    except Exception as e:
-        print(f"Erro ao processar vídeo: {e}")
-
-# Rota para upload de arquivos
-@app.route('/upload', methods=['POST'])
-def upload():
-    if 'file' not in request.files:
-        return jsonify({"error": "Nenhum arquivo enviado."}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "Nome do arquivo inválido."}), 400
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(file_path)
-    thread = Thread(target=process_video_async, args=(file_path, os.path.splitext(file.filename)[0]))
-    thread.start()
-    return jsonify({"message": "Arquivo recebido e processamento iniciado."})
-
-# Rota para download da transcrição
-@app.route('/download/<filename>', methods=['GET'])
-def download(filename):
-    txt_path = os.path.join(UPLOAD_FOLDER, f"{filename}_transcricao.txt")
-    if not os.path.exists(txt_path):
-        return jsonify({"error": "Arquivo não encontrado."}), 404
-    return send_file(txt_path, as_attachment=True)
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+📁 api/
+    📄 transcribe.js
+📄 app.py
+📄 readme.md
+📁 static/
+    📄 script.js
+    📄 styles.css
+📁 templates/
+    📄 index.html
+📄 vercel.json
+📄 wsgi.py import warnings
 ```
 
----
+## 🎯 Casos de Uso
 
-### `templates/index.html`
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcritor de Áudio/Video</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h1>Transcritor de Áudio/Video</h1>
-        <form id="uploadForm">
-            <input type="file" id="fileInput" accept=".mp4,.mkv,.avi,.mov,.wav,.mp3" required>
-            <button type="submit">Enviar e Transcrever</button>
-        </form>
-        <p id="status"></p>
-        <a id="downloadLink" style="display:none;">Baixar Transcrição</a>
-    </div>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-</body>
-</html>
-```
+1. **Transcrição de palestras e aulas**: Converta gravações de aulas ou palestras em texto para revisão.
+2. **Acessibilidade**: Gere legendas automáticas para vídeos.
+3. **Jornalismo**: Transcreva entrevistas para facilitar a produção de matérias.
+4. **Reuniões**: Converta gravações de reuniões em atas textuais.
 
----
+## 🚀 Como Instalar e Rodar
 
-### `static/script.js`
-```javascript
-document.getElementById('uploadForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    const fileInput = document.getElementById('fileInput');
-    const file = fileInput.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
+### Pré-requisitos
 
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.message) {
-            document.getElementById('status').textContent = data.message;
-            const downloadLink = document.getElementById('downloadLink');
-            downloadLink.href = `/download/${file.name.split('.')[0]}`;
-            downloadLink.style.display = 'block';
-        } else if (data.error) {
-            document.getElementById('status').textContent = data.error;
-        }
-    })
-    .catch(error => {
-        console.error('Erro:', error);
-    });
-});
-```
+- Python 3.8 ou superior
+- pip (gerenciador de pacotes do Python)
+- FFmpeg (para processamento de vídeos)
 
----
+### Passo a Passo
 
-### `static/styles.css`
-```css
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    background-color: #f0f0f0;
-}
+1. **Clone o repositório**:
+   ```bash
+   git clone [URL_DO_REPOSITORIO]
+   cd [NOME_DO_DIRETORIO]
+   ```
 
-.container {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    text-align: center;
-}
+2. **Instale o FFmpeg**:
+   - No Ubuntu/Debian:
+     ```bash
+     sudo apt-get install ffmpeg
+     ```
+   - No macOS (com Homebrew):
+     ```bash
+     brew install ffmpeg
+     ```
+   - No Windows: Baixe do site oficial e adicione ao PATH
 
-h1 {
-    margin-bottom: 20px;
-}
+3. **Crie um ambiente virtual (opcional mas recomendado)**:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   venv\Scripts\activate     # Windows
+   ```
 
-input[type="file"] {
-    margin-bottom: 20px;
-}
-
-button {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-button:hover {
-    background-color: #0056b3;
-}
-
-#downloadLink {
-    margin-top: 20px;
-    color: #007bff;
-    text-decoration: none;
-}
-```
-
----
-
-### `requirements.txt`
-```txt
-Flask==2.3.2
-ffmpeg-python==0.2.0
-gunicorn==20.1.0
-pydub==0.25.1
-SpeechRecognition==3.10.0
-```
-
----
-
-### `vercel.json`
-```json
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "wsgi.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "wsgi.py"
-    }
-  ]
-}
-```
-
----
-
-### `wsgi.py`
-```python
-from app import app
-
-if __name__ == "__main__":
-    app.run()
-```
-
----
-
-## Como Executar
-
-1. **Instale as dependências:**
+4. **Instale as dependências**:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Execute o Flask:**
+5. **Execute a aplicação**:
    ```bash
    python app.py
    ```
 
-3. **Acesse no navegador:**
-   Abra `http://localhost:5000` e faça upload de um arquivo de áudio ou vídeo.
+6. **Acesse no navegador**:
+   Abra `http://localhost:5000` no seu navegador preferido.
 
-4. **Implante na Vercel:**
-   Use o comando `vercel --prod` para implantar o projeto.
+## 🖥 Como Usar
 
----
+1. Na página inicial, clique em "Selecionar Arquivo" para escolher um arquivo de vídeo ou áudio.
+2. Aguarde o upload (arquivos grandes podem demorar).
+3. O sistema irá extrair o áudio (se for vídeo) e transcrever para texto.
+4. Quando concluído, um link para download da transcrição será disponibilizado.
 
-## Funcionalidades
+## 📌 Notas Adicionais
 
-1. **Upload de Arquivos**: Aceita arquivos de áudio (WAV, MP3) e vídeo (MP4, MKV, AVI, etc.).
-2. **Extração de Áudio**: Extrai áudio de vídeos usando FFmpeg.
-3. **Transcrição**: Transcreve o áudio usando a API do Google Speech Recognition.
-4. **Download da Transcrição**: Gera um arquivo `.txt` com a transcrição e disponibiliza para download.
+- Arquivos temporários são automaticamente removidos após o processamento.
+- Para arquivos muito grandes, considere dividi-los antes do upload.
+- O serviço de reconhecimento de voz usado é o do Google, que requer internet.
 
----
+## 📜 Licença
 
-## Observações
-
-- Certifique-se de que o FFmpeg está instalado e acessível no sistema.
-- O projeto pode ser adaptado para usar outras APIs de reconhecimento de fala, como Whisper da OpenAI.
-- Para melhorar a precisão da transcrição, ajuste a taxa de amostragem e o idioma no código.
-
-
-```
-
-### 3. **Implantação na Vercel**
-
-1. **Instale a CLI da Vercel:**
-   ```bash
-   npm install -g vercel
-   ```
-
-2. **Faça o Login na Vercel:**
-   ```bash
-   vercel login
-   ```
-
-3. **Faça o Deploy:**
-   ```bash
-   vercel --prod
-   ```
-
----
-
-### 4. **Testes**
-
-- Acesse a URL fornecida pela Vercel.
-- Faça upload de um arquivo MP4 e verifique se a conversão para GIF funciona corretamente.
-
----
-
-## Licença
-
-Este projeto está licenciado sob a MIT License. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
+[MIT License] - Consulte o arquivo LICENSE para mais detalhes.
